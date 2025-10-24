@@ -24,6 +24,7 @@ import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import com.bobmowzie.mowziesmobs.server.sound.MMSounds;
 import com.ilexiconn.llibrary.server.animation.Animation;
 import com.ilexiconn.llibrary.server.animation.AnimationHandler;
+
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -57,6 +58,7 @@ import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.material.PushReaction;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.Team; // ADDED: importe Team
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.items.ItemHandlerHelper;
@@ -64,6 +66,8 @@ import net.minecraftforge.items.ItemHandlerHelper;
 import javax.annotation.Nullable;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.function.Predicate; // ADDED: para el predicate en NearestAttackableTargetGoal
+
 
 /**
  * Created by BobMowzie on 5/8/2017.
@@ -128,94 +132,120 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
         moveControl = new MMEntityMoveHelper(this, 7);
     }
     
-    @Override
-    protected void registerGoals() {
-        super.registerGoals();
-        this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(5, new MoveTowardsRestrictionGoal(this, 1.0D));
-        this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0D));
-        this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
-        this.goalSelector.addGoal(2, new AnimationAreaAttackAI<EntityFrostmaw>(this, SWIPE_ANIMATION, null, null, 2, 6.5f, 6, 135, 1, 9) {
-            @Override
-            public void start() {
-                super.start();
-            }
-        });
-        this.goalSelector.addGoal(2, new AnimationAreaAttackAI<EntityFrostmaw>(this, SWIPE_TWICE_ANIMATION, null, null, 1, 6.5f, 6, 135, 1, 9) {
-            @Override
-            public void start() {
-                super.start();
-            }
+   @Override
+protected void registerGoals() {
+    super.registerGoals();
+    this.goalSelector.addGoal(0, new FloatGoal(this));
+    this.goalSelector.addGoal(5, new MoveTowardsRestrictionGoal(this, 1.0D));
+    this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0D));
+    this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
+    this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
+    this.goalSelector.addGoal(2, new AnimationAreaAttackAI<EntityFrostmaw>(this, SWIPE_ANIMATION, null, null, 2, 6.5f, 6, 135, 1, 9) {
+        @Override
+        public void start() {
+            super.start();
+        }
+    });
+    this.goalSelector.addGoal(2, new AnimationAreaAttackAI<EntityFrostmaw>(this, SWIPE_TWICE_ANIMATION, null, null, 1, 6.5f, 6, 135, 1, 9) {
+        @Override
+        public void start() {
+            super.start();
+        }
 
-            @Override
-            public void tick() {
-                super.tick();
-                if (getAnimationTick() == 21) {
-                    hitEntities();
-                }
-                if (getAnimationTick() == 16) {
-                    playSound(MMSounds.ENTITY_FROSTMAW_WHOOSH.get(), 2, 0.7f);
-                }
-                if (getAnimationTick() == 6) {
-                    playSound(MMSounds.ENTITY_FROSTMAW_WHOOSH.get(), 2, 0.8f);
-                }
-                if (getTarget() != null) lookControl.setLookAt(getTarget(), 30, 30);
+        @Override
+        public void tick() {
+            super.tick();
+            // hitEntities() removido (según solicitud)
+            if (getAnimationTick() == 16) {
+                playSound(MMSounds.ENTITY_FROSTMAW_WHOOSH.get(), 2, 0.7f);
             }
+            if (getAnimationTick() == 6) {
+                playSound(MMSounds.ENTITY_FROSTMAW_WHOOSH.get(), 2, 0.8f);
+            }
+            if (getTarget() != null) lookControl.setLookAt(getTarget(), 30, 30);
+        }
 
-            @Override
-            protected void onAttack(LivingEntity entityTarget, float damageMultiplier, float applyKnockbackMultiplier) {
-                super.onAttack(entityTarget, damageMultiplier, applyKnockbackMultiplier);
-                if (getAnimationTick() == 21 && entityTarget instanceof Player){
-                    Player player = (Player)entityTarget;
-                    if (player.isBlocking()) player.disableShield(true);
-                }
-            }
-        });
-        this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, ICE_BREATH_ANIMATION, true));
-        this.goalSelector.addGoal(2, new SimpleAnimationAI<EntityFrostmaw>(this, ICE_BALL_ANIMATION, true) {
-            @Override
-            public void start() {
-                super.start();
-                playSound(MMSounds.ENTITY_FROSTMAW_ICEBALL_CHARGE.get(), 2, 0.9f);
-            }
-        });
-        this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, ROAR_ANIMATION, false));
-        this.goalSelector.addGoal(2, new AnimationActivateAI<EntityFrostmaw>(this, ACTIVATE_ANIMATION) {
-            @Override
-            public void start() {
-                super.start();
-                playSound(MMSounds.ENTITY_FROSTMAW_WAKEUP.get(), 1, 1);
-            }
-        });
-        this.goalSelector.addGoal(2, new AnimationActivateAI<EntityFrostmaw>(this, ACTIVATE_NO_CRYSTAL_ANIMATION) {
-            @Override
-            public void start() {
-                super.start();
-                playSound(MMSounds.ENTITY_FROSTMAW_WAKEUP.get(), 1, 1);
-            }
-        });
-        this.goalSelector.addGoal(2, new AnimationDeactivateAI<>(this, DEACTIVATE_ANIMATION));
-        this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, LAND_ANIMATION, false));
-        this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, SLAM_ANIMATION, EnumSet.of(Goal.Flag.LOOK)));
-        this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, DODGE_ANIMATION, EnumSet.of(Goal.Flag.MOVE, Goal.Flag.JUMP)));
-        this.goalSelector.addGoal(3, new AnimationTakeDamage<>(this));
-        this.goalSelector.addGoal(1, new AnimationDieAI<>(this));
-        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, 0, true, false, null));
-    }
+        @Override
+        protected void onAttack(LivingEntity entityTarget, float damageMultiplier, float applyKnockbackMultiplier) {
+            // seguridad nula
+            if (entityTarget == null) return;
 
-    @Override
-    protected PathNavigation createNavigation(Level world) {
-        return new MMPathNavigateGround(this, world);
-    }
+            // no golpear aliados (mismo team)
+            Team myTeam = EntityFrostmaw.this.getTeam();
+            Team theirTeam = entityTarget.getTeam();
+            if (myTeam != null && myTeam.equals(theirTeam)) return;
 
-    public static AttributeSupplier.Builder createAttributes() {
-        return MowzieEntity.createAttributes().add(Attributes.ATTACK_DAMAGE, 10)
-                .add(Attributes.MAX_HEALTH, 250)
-                .add(Attributes.KNOCKBACK_RESISTANCE, 1)
-                .add(Attributes.FOLLOW_RANGE, 50)
-                .add(Attributes.MOVEMENT_SPEED, 0.3D);
-    }
+            // ejecutar comportamiento por defecto del onAttack (aplica daño/knockback según implementación base)
+            super.onAttack(entityTarget, damageMultiplier, applyKnockbackMultiplier);
+
+            // efectos adicionales: quitar escudo al jugador en el tick de impacto
+            if (getAnimationTick() == 21 && entityTarget instanceof Player) {
+                Player player = (Player) entityTarget;
+                if (player.isBlocking()) player.disableShield(true);
+            }
+        }
+    });
+    this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, ICE_BREATH_ANIMATION, true));
+    this.goalSelector.addGoal(2, new SimpleAnimationAI<EntityFrostmaw>(this, ICE_BALL_ANIMATION, true) {
+        @Override
+        public void start() {
+            super.start();
+            playSound(MMSounds.ENTITY_FROSTMAW_ICEBALL_CHARGE.get(), 2, 0.9f);
+        }
+    });
+    this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, ROAR_ANIMATION, false));
+    this.goalSelector.addGoal(2, new AnimationActivateAI<EntityFrostmaw>(this, ACTIVATE_ANIMATION) {
+        @Override
+        public void start() {
+            super.start();
+            playSound(MMSounds.ENTITY_FROSTMAW_WAKEUP.get(), 1, 1);
+        }
+    });
+    this.goalSelector.addGoal(2, new AnimationActivateAI<EntityFrostmaw>(this, ACTIVATE_NO_CRYSTAL_ANIMATION) {
+        @Override
+        public void start() {
+            super.start();
+            playSound(MMSounds.ENTITY_FROSTMAW_WAKEUP.get(), 1, 1);
+        }
+    });
+    this.goalSelector.addGoal(2, new AnimationDeactivateAI<>(this, DEACTIVATE_ANIMATION));
+    this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, LAND_ANIMATION, false));
+    this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, SLAM_ANIMATION, EnumSet.of(Goal.Flag.LOOK)));
+    this.goalSelector.addGoal(2, new SimpleAnimationAI<>(this, DODGE_ANIMATION, EnumSet.of(Goal.Flag.MOVE, Goal.Flag.JUMP)));
+    this.goalSelector.addGoal(3, new AnimationTakeDamage<>(this));
+    this.goalSelector.addGoal(1, new AnimationDieAI<>(this));
+
+    // TARGET: ataca cualquier LivingEntity que NO comparta team con este Frostmaw
+    this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(
+        this,
+        LivingEntity.class,
+        10,     // chance
+        true,   // mustSee
+        false,  // mustReach
+        target -> {
+            if (target == null) return false;
+            if (target == EntityFrostmaw.this) return false;
+            if (target instanceof Player && ((Player) target).isSpectator()) return false;
+            Team myTeam = EntityFrostmaw.this.getTeam();
+            Team theirTeam = target.getTeam();
+            if (myTeam == null) return true;          // si no tengo team: ataco cualquiera
+            return !myTeam.equals(theirTeam);         // si tengo team: solo ataco si son distintos
+        }
+    ));
+}
+
+@Override
+protected PathNavigation createNavigation(Level world) {
+    return new MMPathNavigateGround(this, world);
+}
+
+public static AttributeSupplier.Builder createAttributes() {
+    return MowzieEntity.createAttributes().add(Attributes.ATTACK_DAMAGE, 10)
+            .add(Attributes.MAX_HEALTH, 250)
+            .add(Attributes.KNOCKBACK_RESISTANCE, 1)
+            .add(Attributes.FOLLOW_RANGE, 50)
+            .add(Attributes.MOVEMENT_SPEED, 0.3D);
+}
 
     @Override
     protected float getWaterSlowDown() {
